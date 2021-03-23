@@ -1,10 +1,12 @@
+#define _GNU_SOURCE
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <pwd.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <sched.h>
+#include <threads.h>
+#include <wait.h>
 #include "utils/string.h"
 
 # define TRUE 1
@@ -16,21 +18,24 @@ void readCommand(char*, char*);
 void execute(char *command, char *params);
 
 int main() {
-    int PID = getpid();
     while (TRUE) {
+        // 命令
         char command[MAX_SIZE] = "";
+        // 参数
         char params[MAX_SIZE] = "";
-        // display prompt on the screen
+        // 输入命令前的提示
         prompt();
+        // 读取命令
         readCommand(command, params);
-        // nothing to do
+        // 啥也没输
         if (!strcmp(command, "")) {
             continue;
         }
-        // exit
+        // 退出
         if (!strcmp(command, "quit")) {
             _exit(1);
         }
+        // 执行命令
         execute(command, params);
     }
     return 0;
@@ -43,14 +48,54 @@ int main() {
  */
 void execute(char *command, char *params) {
     if (!strcmp(command, "run")) {
+        // run
         if (!strcmp(params, "")) {
             printf("nothing to do!\n");
             return;
         }
-        system(params);
+        trim(params);
+        // 如果指定CPU
+        int childPid = 0;
+        if (params[0] == '-' && params[1] == 'c') {
+            char* coreParam = strtok(params, " ");
+            char* core = strtok(NULL, " ");
+            // 要执行的命令和参数
+            char* paramsTmp[16][MAX_SIZE] = {0};
+            // 要执行的命令
+            char commandTmp[MAX_SIZE] = "";
+            char * buffer = strtok(NULL, " ");
+            strcpy(commandTmp, buffer);
+            int paramIdx = 0;
+            for (int i = 0; i < MAX_SIZE && buffer != NULL; ++i) {
+                strcpy(paramsTmp[i], buffer);
+                buffer = strtok(NULL, " ");
+                paramIdx = i;
+            }
+            childPid = fork();
+            if (childPid == 0) {
+                printf("before\n");
+                cpu_set_t mask;
+                CPU_ZERO(&mask);    //置空
+                CPU_SET(core - 48,&mask);   // 将当前线程和CPU绑定
+                sched_setaffinity(0, sizeof(mask), &mask);
+                if (execvp(commandTmp, paramsTmp) < 0) {
+                    printf("fail to execv\n");
+                    exit(1);
+                }
+                printf("after\n");
+                exit(1);
+            } else {
+                wait(childPid);
+            }
+        } else {
+            system(params);
+        }
+
     } else if (!strcmp(command, "list")) {
+        // list
         system("ps -aux");
     } else if (!strcmp(command, "kill")) {
+        // kill 后需要接pid
         if (!strcmp(params, "")) {
             printf("please add the pid after the command!\n");
             return;
@@ -59,6 +104,7 @@ void execute(char *command, char *params) {
         strcat(tmp, params);
         system(tmp);
     } else {
+        // 未知命令 提示
         printf("%s", "unknown command. please enter as follows:\n");
         printf("  run [-r] command: run a command, -r specify a cpu core.\n");
         printf("  list:             lists the currently running processes.\n");
@@ -79,6 +125,7 @@ void readCommand(char * command, char* params) {
         return ;
     }
     int flag = 0;
+    // 空格前面的是command
     for (int i = 0; input[i] != 32 && input[i] != '\0'; i++) {
         flag = i;
         command[i] = input[i];
@@ -86,6 +133,7 @@ void readCommand(char * command, char* params) {
     flag += 1;
     command[flag] = '\0';
     flag += 1;
+    // 空格后面的是params
     for (int i = flag; input[i] != '\0' ; i++) {
         params[i - flag] = input[i];
         params[i - flag + 1] = '\0';
@@ -93,18 +141,23 @@ void readCommand(char * command, char* params) {
 }
 
 /**
- * 显示提示符
+ * 显示提示符，格式为：
+ *  用户名:当前目录<$|#>
  */
 void prompt() {
     struct passwd *user = getpwuid(getuid());
+    // 普通用户的分隔符为 $
     char spacer = '$';
     char *dir = NULL;
+    // 获取当前目录
     dir = getcwd(NULL, 0);
-    // root
+    // root 用户的分隔符为 #
     if (strcmp(user->pw_name, "root") == 0) {
         spacer = '#';
     }
+    // 用户主目录
     char* homePath = user->pw_dir;
+    // 当前工作目录包含用户主目录就替换成~
     replace(dir, homePath, "~");
     printf("%s:%s%c ", user->pw_name, dir, spacer);
 }

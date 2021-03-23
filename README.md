@@ -1,9 +1,16 @@
 # bash-like
 
-## run 
+## build
 ```shell
+sudo apt-get update
+sudo apt-get install -y build-essential
 cmake ./
 make
-./w
+
+```
+
+## run 
+```shell
+./bash-like
 ```
  

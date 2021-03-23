@@ -94,4 +94,30 @@ void join (char** slice, char* delim, char* rst) {
         strcat(rst, slice[i]);
     }
 }
+/**
+ * 去掉字符串两端的空格
+ * @param str
+ */
+void trim (char* str) {
+    int start = 0, end = 0;
+    int n = strlen(str);
+    for (int i = 0; str[i] != '\0'; ++i) {
+        if (str[i] != 32) {
+            start = i;
+            break;
+        }
+    }
+    for (int i = n; i > 0; --i) {
+        if (str[i] != 32) {
+            end = i;
+            break;
+        }
+    }
+    for (int i = 0; i < end; ++i) {
+        str[i] = str[start + i];
+    }
+    for (int i = end; i < n; ++i) {
+        str[i] = '\0';
+    }
+}
 #endif //W_STRING_H
